@@ -1,0 +1,19 @@
+{
+  "name": "Axiomo",
+  "short_name": "Axiomo",
+  "description": "Análisis estructural con el procedimiento completo, paso a paso.",
+  "lang": "es",
+  "dir": "ltr",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f1f5f9",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {"src": "icono-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icono-mascara.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

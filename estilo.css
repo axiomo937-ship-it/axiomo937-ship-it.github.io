@@ -99,6 +99,16 @@ main { max-width: 1100px; margin: 0 auto; padding: 10px 10px 0; }
 .reaccion { stroke: var(--verde); stroke-width: 2.4; fill: none; }
 .etq-reaccion { font-size: 12px; font-weight: 700; fill: var(--verde); }
 .resorte { stroke: #1e3a8a; stroke-width: 2; fill: none; stroke-linejoin: round; }
+/* pórticos y armaduras */
+.barra-arm { stroke: #1f2937; stroke-width: 3.4; stroke-linecap: round; }
+.nodo-arm { fill: #fff; stroke: #1f2937; stroke-width: 2.2; }
+.seleccion-nodo { fill: rgba(245, 158, 11, .25); stroke: #f59e0b; stroke-width: 2.5; }
+.etq-temp { font-size: 12px; font-weight: 700; fill: #c2410c; }
+.diag-estructura { stroke: #94a3b8; stroke-width: 2; stroke-linecap: round; }
+.diag-deformada { fill: none; stroke: #15803d; stroke-width: 2.4; stroke-linejoin: round; }
+.diag-marco { stroke-width: 1.6; stroke-linejoin: round; }
+.chips-diagrama { margin: 8px 0 2px; }
+.diag-valor-arm { font-size: 10.5px; font-weight: 800; paint-order: stroke; stroke: #fff; stroke-width: 3.5px; stroke-linejoin: round; }
 .seleccion { stroke: #fbbf24 !important; }
 
 /* ---------------------------------------------------------------- tarjetas */
@@ -124,7 +134,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 10px 10px 0; }
 .diag-v { fill: rgba(37, 99, 235, .16); stroke: #2563eb; stroke-width: 2; }
 .diag-m { fill: rgba(220, 38, 38, .14); stroke: #dc2626; stroke-width: 2; }
 .diag-d { fill: rgba(21, 128, 61, .12); stroke: #15803d; stroke-width: 2; }
-.diag-valor { font-size: 11.5px; font-weight: 700; }
+.diag-valor { font-size: 11.5px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
 .cursor-linea { stroke: #f59e0b; stroke-width: 1.5; stroke-dasharray: 4 3; }
 .cursor-caja { fill: #111827; opacity: .88; }
 .cursor-texto { fill: #fff; font-size: 12px; font-weight: 600; }
@@ -150,6 +160,17 @@ button.grande {
 .herramientas button.principal { flex: 1.25; background: var(--azul); color: #fff; }
 .herramientas button.principal:active { background: var(--navy); }
 .herramientas button[disabled] { opacity: .5; }
+.herramientas button.activa { background: #fef3c7; color: #92400e; }
+.tipo-btn {
+  display: flex; align-items: center; gap: 2px; flex: none; background: rgba(255, 255, 255, .14); border: 0; color: #fff;
+  font-weight: 700; font-size: 13.5px; padding: 6px 4px 6px 10px; border-radius: 10px; cursor: pointer; white-space: nowrap;
+}
+.tipo-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.metodo.elegido { border-color: var(--azul); box-shadow: 0 0 0 2px var(--azul-claro); }
+@media (max-width: 420px) {
+  .logo { height: 26px; padding: 2px 6px; }
+  .motor { font-size: 12px; }
+}
 
 /* ---------------------------------------------------------------- hoja inferior */
 .hoja { position: fixed; inset: 0; z-index: 40; }

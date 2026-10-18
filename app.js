@@ -4,7 +4,7 @@
 // hace el motor de Axiomo (Python) en un Web Worker (motor_worker.js).
 "use strict";
 
-const VERSION = "web 0.2";
+const VERSION = "web 0.4";
 const $ = (id) => document.getElementById(id);
 const LISTAS_CARGA = ["cargas_puntuales", "cargas_distribuidas", "cargas_polinomicas", "momentos", "cargas_nodales"];
 const NS = "http://www.w3.org/2000/svg";
@@ -399,15 +399,25 @@ function escribirLocal(k, v) {
   try { localStorage.setItem(k, v); } catch (_) { /* sin almacenamiento */ }
 }
 
-function guardarLocal() { escribirLocal("axiomo.viga", JSON.stringify(modelo)); }
+// cada tipo de estructura guarda su propio modelo en el dispositivo
+const TIPOS = ["Viga", "Pórtico", "Armadura"];
+const CLAVE_TIPO = { "Viga": "axiomo.viga", "Pórtico": "axiomo.portico", "Armadura": "axiomo.armadura" };
 
-function cargarLocal() {
+function guardarLocal() {
+  escribirLocal(CLAVE_TIPO[modelo.tipo] || "axiomo.viga", JSON.stringify(modelo));
+  escribirLocal("axiomo.tipo", modelo.tipo);
+}
+
+function cargarLocal(tipo = "Viga") {
   try {
-    const t = leerLocal("axiomo.viga");
+    const t = leerLocal(CLAVE_TIPO[tipo]);
     const m = t ? normalizar(JSON.parse(t)) : null;
-    return m && m.tipo === "Viga" && m.nodos.length >= 2 && m.miembros.length ? m : null;
+    if (!m || m.tipo !== tipo || !m.nodos.length) return null;
+    return tipo !== "Viga" || (m.nodos.length >= 2 && m.miembros.length) ? m : null;
   } catch (_) { return null; }
 }
+
+function modeloInicial(tipo) { return tipo === "Viga" ? vigaInicial(true) : Marco.inicial(tipo); }
 
 function cambio({ encuadrar = false } = {}) {
   resultado = null;
@@ -500,17 +510,33 @@ function texto(x, y, t, clase, ancla = "middle") {
   return `<text x="${x}" y="${y}" class="${clase}" text-anchor="${ancla}">${t}</text>`;
 }
 
-// rótulos sin choques: cada texto (y cada repartida dibujada) ocupa una caja;
-// un rótulo nuevo prueba sus posiciones y, si todas chocan, sube un renglón
+// rótulos sin choques: cada texto (y cada repartida dibujada) ocupa una caja, y
+// las barras ocupan su segmento; un rótulo nuevo prueba sus posiciones y, si
+// todas chocan, sube un renglón
 let ocupados = [];
+let segmentos = [];                      // [x1, y1, x2, y2] en pantalla: las barras dibujadas
+
+// ¿el segmento pasa por la caja? (recorte de Liang-Barsky)
+function segmentoEnCaja([x1, y1, x2, y2], [a, b, c, d]) {
+  let t0 = 0, t1 = 1;
+  const dx = x2 - x1, dy = y2 - y1;
+  for (const [p, q] of [[-dx, x1 - a], [dx, c - x1], [-dy, y1 - b], [dy, d - y1]]) {
+    if (Math.abs(p) < 1e-12) { if (q < 0) return false; continue; }
+    const r = q / p;
+    if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; }
+  }
+  return true;
+}
 
 function rotulo(candidatos, t, clase, tam = 12) {
   const ancho = t.length * tam * 0.6 + 4, alto = tam + 2;
-  const choca = (c) => ocupados.some((o) => c[0] < o[2] && c[2] > o[0] && c[1] < o[3] && c[3] > o[1]);
+  const choca = (c) => ocupados.some((o) => c[0] < o[2] && c[2] > o[0] && c[1] < o[3] && c[3] > o[1]) ||
+    segmentos.some((s) => segmentoEnCaja(s, c));
+  // cada rótulo va en su sitio aunque se salga del lienzo: el encuadre automático
+  // achica el dibujo lo justo para que quepa (correrlo hacia adentro lo montaba en su flecha)
   const probar = (x, y, ancla) => {
     const x1 = ancla === "start" ? x : ancla === "end" ? x - ancho : x - ancho / 2;
-    const dentro = Math.max(4, Math.min(x1, lay.W - 4 - ancho));      // sin salirse del lienzo
-    return { caja: [dentro, y - alto + 2, dentro + ancho, y + 3], x: dentro === x1 ? x : dentro, ancla: dentro === x1 ? ancla : "start", y };
+    return { caja: [x1, y - alto + 2, x1 + ancho, y + 3], x, ancla, y };
   };
   let elegido = null;
   for (let subida = 0; subida < 10 && !elegido; subida++) {
@@ -590,6 +616,8 @@ function interpolar(puntos, t) {
 
 function dibujar() {
   if (!modelo) return;
+  if (modelo.tipo !== "Viga") return Marco.dibujar();
+  $("ayuda").textContent = "Toca un tramo, un nodo o una carga para editarlo. Pellizca para acercar.";
   lay = calcularLayout();
   const { W, H, X, y0 } = lay;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
@@ -597,6 +625,7 @@ function dibujar() {
   let fondo = "", capaVigas = "", capaRepartidas = "", capaPuntuales = "", capaMomentos = "", capaTramos = "";
   let capaNodos = "", capaRes = "", capaToque = "";
   ocupados = [];
+  segmentos = [];
   const defs = `<defs>
     <marker id="fr" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L9,4.5 L0,9 z" fill="#dc2626"/></marker>
     <marker id="fm" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L9,4.5 L0,9 z" fill="#7c3aed"/></marker>
@@ -844,6 +873,7 @@ svg.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 function tocar(el) {
+  if (modelo.tipo !== "Viga") return Marco.tocar(el);
   if (!el) return;
   const tipo = el.dataset.tipo, id = el.dataset.id;
   if (tipo === "miembro") hojaTramo(id);
@@ -1167,15 +1197,19 @@ function hojaMomento({ id = null, tramo = null } = {}) {
 
 function hojaMaterial() {
   const p = propiedadesActuales();
+  const conA = modelo.tipo !== "Viga", conI = modelo.tipo !== "Armadura";
   abrirHoja("Material y sección", `
     ${campo("h-E", "Módulo de elasticidad E (GPa)", numCampo(p.E / 1e6))}
-    ${campo("h-I", "Inercia I (cm⁴)", numCampo(p.I * 1e8))}
-    <p class="nota">Se aplican a todos los tramos. Cambian las flechas y las vigas hiperestáticas; en una isostática las reacciones no dependen de ellos.</p>`, [
+    ${conI ? campo("h-I", "Inercia I (cm⁴)", numCampo(p.I * 1e8)) : ""}
+    ${conA ? campo("h-A", "Área A (cm²)", numCampo(p.A * 1e4)) : ""}
+    <p class="nota">Se aplican a todas las barras. Cambian los desplazamientos y las estructuras hiperestáticas; en una isostática las reacciones no dependen de ellos.</p>`, [
     { texto: "Cancelar", clase: "secundario", accion: () => true },
     { texto: "Aplicar", accion: () => {
-      const E = leerNumero("h-E", { minimo: 1e-6, nombre: "E" }) * 1e6, I = leerNumero("h-I", { minimo: 1e-9, nombre: "I" }) * 1e-8;
-      for (const m of modelo.miembros) { m.E = E; m.I = I; }
-      modelo.propiedades_globales = { ...modelo.propiedades_globales, E, I };
+      const E = leerNumero("h-E", { minimo: 1e-6, nombre: "E" }) * 1e6;
+      const I = $("h-I") ? leerNumero("h-I", { minimo: 1e-9, nombre: "I" }) * 1e-8 : p.I;
+      const A = $("h-A") ? leerNumero("h-A", { minimo: 1e-9, nombre: "A" }) * 1e-4 : p.A;
+      for (const m of modelo.miembros) { m.E = E; m.I = I; m.A = A; }
+      modelo.propiedades_globales = { ...modelo.propiedades_globales, E, I, A };
       cambio();
     } },
   ]);
@@ -1205,6 +1239,7 @@ async function calcular() {
 }
 
 function mostrarResultados() {
+  if (modelo.tipo !== "Viga") return Marco.mostrarResultados();
   const r = resultado;
   $("res-metodo").textContent = r.metodo;
   $("res-notas").textContent = [...(r.notas || []), ...(r.avisos || [])].join(" ");
@@ -1239,6 +1274,7 @@ const PANELES = [
 ];
 
 function dibujarDiagramas() {
+  if (modelo.tipo !== "Viga") return Marco.dibujarDiagramas();
   const caja = $("diagramas");
   const W = Math.max(280, caja.clientWidth || 340);
   const H = 150;
@@ -1291,6 +1327,7 @@ function valorEn(seg, x) {
 
 // el mismo x en los tres diagramas, con su valor
 function moverCursor(e) {
+  if (modelo.tipo !== "Viga") { if (e.type === "pointerdown") Marco.leer(e); return; }
   const caja = $("diagramas");
   if (!caja._paneles || !caja._paneles.length) return;
   for (const pan of caja._paneles) {
@@ -1337,6 +1374,7 @@ function noAplica(met, grado, larga = false) {
 }
 
 function hojaPasoAPaso() {
+  if (modelo.tipo !== "Viga") return Marco.hojaPasoAPaso();
   const grado = gradoHiperestatico();
   const estado = grado < 0 ? "La viga es inestable: le faltan apoyos." : grado === 0 ? "Viga isostática." : `Viga hiperestática de grado ${grado}.`;
   const algunoNo = METODOS.some((x) => noAplica(x, grado));
@@ -1441,7 +1479,8 @@ function guardarArchivo() {
   const blob = new Blob([JSON.stringify(datos, null, 1)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `viga-${new Date().toISOString().slice(0, 10)}.pystruct`;
+  const nombre = { "Viga": "viga", "Pórtico": "portico", "Armadura": "armadura" }[modelo.tipo] || "modelo";
+  a.download = `${nombre}-${new Date().toISOString().slice(0, 10)}.pystruct`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
@@ -1455,13 +1494,12 @@ $("archivo").addEventListener("change", async (e) => {
     let d;
     try { d = JSON.parse(await f.text()); } catch (_) { throw new Error("Ese archivo no es un modelo de Axiomo (.pystruct)."); }
     const m = d.modelo || d;
-    if (m.tipo !== "Viga") {
-      const que = { "Pórtico": "un pórtico", "Armadura": "una armadura" }[m.tipo] || "otro tipo de estructura";
-      throw new Error(`Ese archivo es de ${que}: por ahora la versión para tablet abre vigas.`);
-    }
-    if (!Array.isArray(m.nodos) || m.nodos.length < 2) throw new Error("El archivo no tiene una viga completa.");
+    if (!TIPOS.includes(m.tipo)) throw new Error("Ese archivo no es un modelo de Axiomo.");
+    if (!Array.isArray(m.nodos) || m.nodos.length < (m.tipo === "Viga" ? 2 : 1)) throw new Error("El archivo no tiene una estructura completa.");
+    if (modelo.tipo !== "Viga" && Marco.modoBarra) Marco.salirModoBarra();
     modelo = normalizar(m);
     leyes.clear();
+    pintarHerramientas();
     cambio({ encuadrar: true });
     aviso(`Abierto: ${f.name}`);
   } catch (err) {
@@ -1476,7 +1514,8 @@ for (const b of document.querySelectorAll("[data-menu]")) {
   b.addEventListener("click", () => {
     $("menu").hidden = true;
     const accion = b.dataset.menu;
-    if (accion === "nuevo") {
+    if (accion === "nuevo" && modelo.tipo !== "Viga") Marco.hojaNuevo();
+    else if (accion === "nuevo") {
       abrirHoja("Nueva viga", `<p>Se borra la viga actual y se empieza con un tramo de 6 m apoyado en sus extremos.</p>`, [
         { texto: "Cancelar", clase: "secundario", accion: () => true },
         { texto: "Empezar de nuevo", clase: "peligro", accion: () => { vigaInicial(false); leyes.clear(); cambio({ encuadrar: true }); } },
@@ -1495,16 +1534,56 @@ for (const b of document.querySelectorAll("[data-menu]")) {
   });
 }
 
-for (const b of document.querySelectorAll("#herramientas [data-accion]")) {
-  b.addEventListener("click", () => {
-    const a = b.dataset.accion;
-    if (a === "tramo") hojaNuevoTramo();
-    else if (a === "apoyo") hojaApoyo();
-    else if (a === "carga") hojaCarga();
-    else if (a === "momento") hojaMomento();
-    else if (a === "calcular") calcular();
-  });
+const HERRAMIENTAS_VIGA = [
+  ["tramo", "Tramo", `<path d="M3 14h18M12 6v6M9 9h6"/>`],
+  ["apoyo", "Apoyo", `<path d="M12 6l-6 9h12z"/><path d="M5 19h14"/>`],
+  ["carga", "Carga", `<path d="M12 3v14M7 12l5 5 5-5"/><path d="M4 21h16"/>`],
+  ["momento", "Momento", `<path d="M18 12a6 6 0 1 1-3-5.2"/><path d="M15 3l1 4-4 1"/>`],
+];
+const ICONO_CALCULAR = `<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h2M12 11h2M8 15h2M12 15h2M16 11v6"/>`;
+
+function pintarHerramientas() {
+  const lista = modelo.tipo === "Viga" ? HERRAMIENTAS_VIGA : Marco.herramientas();
+  $("herramientas").innerHTML = lista.map(([a, t, ico]) => `<button data-accion="${a}"><svg viewBox="0 0 24 24">${ico}</svg><span>${t}</span></button>`).join("") +
+    `<button data-accion="calcular" class="principal" id="btn-calcular"><svg viewBox="0 0 24 24">${ICONO_CALCULAR}</svg><span>Calcular</span></button>`;
+  $("tipo-texto").textContent = modelo.tipo;
 }
+
+$("herramientas").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-accion]");
+  if (!b) return;
+  const a = b.dataset.accion;
+  if (a === "calcular") calcular();
+  else if (modelo.tipo !== "Viga") Marco.accion(a);
+  else if (a === "tramo") hojaNuevoTramo();
+  else if (a === "apoyo") hojaApoyo();
+  else if (a === "carga") hojaCarga();
+  else if (a === "momento") hojaMomento();
+});
+
+function cambiarTipo(tipo) {
+  if (tipo === modelo.tipo) return;
+  if (modelo.tipo !== "Viga" && Marco.modoBarra) Marco.salirModoBarra();
+  guardarLocal();
+  modelo = cargarLocal(tipo) || modeloInicial(tipo);
+  leyes.clear();
+  pintarHerramientas();
+  cambio({ encuadrar: true });
+}
+
+$("btn-tipo").addEventListener("click", () => {
+  const tipos = [["Viga", "Vigas continuas, con voladizos, rótulas y cargas con función."],
+                 ["Pórtico", "Marcos con barras inclinadas, rótulas y cargas globales entre nodos."],
+                 ["Armadura", "Barras articuladas con cargas en los nudos."]];
+  abrirHoja("Tipo de estructura", `<div class="lista-metodos">${tipos.map(([t, d]) =>
+    `<button class="metodo${t === modelo.tipo ? " elegido" : ""}" data-tipo-estructura="${t}"><b>${t}</b><small>${d}</small></button>`).join("")}</div>` +
+    `<p class="nota">Cada tipo guarda su propio modelo en este dispositivo: al volver, sigue como lo dejaste.</p>`,
+  [{ texto: "Cerrar", clase: "secundario", accion: () => true }], () => {
+    for (const b of $("hoja-cuerpo").querySelectorAll("[data-tipo-estructura]")) {
+      b.addEventListener("click", () => { cerrarHoja(); cambiarTipo(b.dataset.tipoEstructura); });
+    }
+  });
+});
 $("btn-ajustar").addEventListener("click", ajustarVista);
 $("btn-paso-a-paso").addEventListener("click", hojaPasoAPaso);
 
@@ -1522,6 +1601,9 @@ window.addEventListener("resize", () => {
 
 // ======================================================================= arranque
 revisarActivacion();
-modelo = cargarLocal() || vigaInicial(true);
+const tipoGuardado = leerLocal("axiomo.tipo");
+const tipoInicial = TIPOS.includes(tipoGuardado) ? tipoGuardado : "Viga";
+modelo = cargarLocal(tipoInicial) || modeloInicial(tipoInicial);
+pintarHerramientas();
 dibujar();
 prepararLeyes();

@@ -1464,14 +1464,48 @@ async function generarReporte(metodo, opciones) {
     $("reporte-progreso").hidden = true;
     $("reporte-html").innerHTML = r.html + (licenciado ? `<p class="licencia">Axiomo · Licenciado a ${escapar(licenciado)}</p>` : "");
     $("reporte-html").scrollTop = 0;
+    ajustarImpresion();
   } catch (err) {
     if (!vigente()) return;
     $("reporte-progreso").hidden = true;
     $("reporte-html").innerHTML = `<div class="sin-reporte"><h3>No se pudo aplicar el método</h3><p>${escapar(err.message || err)}</p></div>`;
   }
 }
+// Al imprimir o guardar en PDF, la hoja útil mide unos 700 px. Las matrices del
+// Matricial vienen armadas para la hoja del escritorio (unos 1040 px) y van de a
+// varias en una fila (matrices_en_fila): al imprimir, la fila se parte y cada
+// matriz baja al renglón siguiente si no cabe, y la que sola sigue sin caber se
+// reduce con zoom. En pantalla nada cambia: tamaño completo, desplazable de lado
+const ANCHO_HOJA = 680;
+function ajustarImpresion() {
+  const reducir = (el, ancho) => {
+    if (!(ancho > 0)) return;                    // la vista está cerrada: no se puede medir
+    const z = ancho > ANCHO_HOJA ? ANCHO_HOJA / ancho : 1;
+    el.classList.toggle("reducir-al-imprimir", z < 1);
+    el.style.setProperty("--zoom-hoja", z.toFixed(3));
+  };
+  // una celda que es un solo número no se parte ("-7.30533e-" arriba y "06" abajo)
+  for (const td of $("reporte-html").querySelectorAll("td")) {
+    const t = td.textContent.trim();
+    if (t && !/\s/.test(t) && !td.querySelector("table")) td.style.whiteSpace = "nowrap";
+  }
+  for (const t of $("reporte-html").querySelectorAll("table")) {
+    if (t.parentElement.closest("table")) continue;                   // la de afuera decide
+    const celdas = t.rows.length === 1 ? [...t.rows[0].cells] : [];
+    if (celdas.length > 1 && celdas.some((c) => c.querySelector("table"))) {
+      t.classList.add("fila-matrices");
+      for (const c of celdas) reducir(c, c.getBoundingClientRect().width);
+    } else if (/%$/.test(t.style.width) && t.scrollWidth <= t.clientWidth + 1) {
+      reducir(t, 1);                             // ancho en %: se acomoda sola a la hoja
+    } else {
+      // el ancho del contenido: la tabla en sí ocupa todo el renglón (display: block)
+      reducir(t, (t.tBodies[0] || t).getBoundingClientRect().width);
+    }
+  }
+}
+window.addEventListener("beforeprint", ajustarImpresion);
 $("btn-cerrar-reporte").addEventListener("click", () => { $("vista-reporte").hidden = true; });
-$("btn-imprimir").addEventListener("click", () => window.print());
+$("btn-imprimir").addEventListener("click", () => { ajustarImpresion(); window.print(); });
 
 // ======================================================================= archivos
 function guardarArchivo() {

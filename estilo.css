@@ -290,4 +290,9 @@ button.grande {
   .barra, .herramientas, main, .hoja, .menu, .aviso, .activacion, .vista-reporte > header, .reporte-progreso { display: none !important; }
   .vista-reporte { position: static; display: block !important; }
   .reporte { overflow: visible; padding: 0; }
+  /* lo ancho no se corta en la hoja (ver ajustarImpresion en app.js) */
+  .reporte table { overflow: visible; max-width: none; }
+  .reporte .fila-matrices, .reporte .fila-matrices > tbody, .reporte .fila-matrices > tbody > tr { display: block; }
+  .reporte .fila-matrices > tbody > tr > td { display: inline-block; vertical-align: top; }
+  .reporte .reducir-al-imprimir { zoom: var(--zoom-hoja, 1); }
 }

@@ -656,7 +656,8 @@ const Marco = (() => {
     const L = largo(m), [ux, uy] = unitario(m);
     const ang = ((Math.atan2(uy, ux) * 180) / Math.PI + 360) % 360;
     const t = modelo.temperaturas.find((c) => c.miembro === et);
-    let html = `<p class="nota">De ${m.i} a ${m.j} · largo ${fmtL(L)} · ángulo ${fmt(ang, 1)}°</p>`;
+    let html = `<p class="nota">De ${m.i} a ${m.j} · largo ${fmtL(L)} · ángulo ${fmt(ang, 1)}°</p>` +
+      camposPropiedades(m, { fijadas: modelo.propiedades_globales || {} }) + notaPropiedades();
     if (esArmadura()) {
       html += `<div class="fila">${campo("h-dT", "Cambio de temperatura ΔT (°C)", t ? numCampo(t.dT) : "0")}` +
         `${campo("h-alfa", "Coeficiente α (1/°C)", t ? String(t.alpha) : "0.0000117", { modo: "text" })}</div>` +
@@ -669,14 +670,19 @@ const Marco = (() => {
       { texto: "Eliminar", clase: "peligro", accion: () => { eliminarBarra(et); cambio({ encuadrar: true }); } },
       { texto: "Cerrar", clase: "secundario", accion: () => true },
     ];
-    if (esArmadura()) botones.push({ texto: "Guardar", accion: () => {
-      const dT = leerNumero("h-dT", { nombre: "ΔT" });
-      const alfa = leerNumero("h-alfa", { minimo: 0, nombre: "α" });
-      modelo.temperaturas = modelo.temperaturas.filter((c) => c.miembro !== et);
-      if (Math.abs(dT) > 1e-12) modelo.temperaturas.push({ id: nuevoId(), miembro: et, alpha: alfa, dT });
+    botones.push({ texto: "Guardar", accion: () => {
+      const props = leerPropiedades();
+      if (esArmadura()) {
+        const dT = leerNumero("h-dT", { nombre: "ΔT" });
+        const alfa = leerNumero("h-alfa", { minimo: 0, nombre: "α" });
+        modelo.temperaturas = modelo.temperaturas.filter((c) => c.miembro !== et);
+        if (Math.abs(dT) > 1e-12) modelo.temperaturas.push({ id: nuevoId(), miembro: et, alpha: alfa, dT });
+      }
+      Object.assign(m, props);
       cambio();
     } });
     abrirHoja(`Barra ${et}`, html, botones, () => {
+      conectarUnidades();
       if ($("h-carga-aqui")) $("h-carga-aqui").addEventListener("click", () => hojaCarga({ tipo: "repartida", barra: et }));
       if ($("h-momento-aqui")) $("h-momento-aqui").addEventListener("click", () => hojaCarga({ tipo: "momento", barra: et }));
     });

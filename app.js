@@ -4,7 +4,7 @@
 // hace el motor de Axiomo (Python) en un Web Worker (motor_worker.js).
 "use strict";
 
-const VERSION = "web 0.4";
+const VERSION = "web 0.5";
 const $ = (id) => document.getElementById(id);
 const LISTAS_CARGA = ["cargas_puntuales", "cargas_distribuidas", "cargas_polinomicas", "momentos", "cargas_nodales"];
 const NS = "http://www.w3.org/2000/svg";
@@ -314,11 +314,91 @@ function siguienteMiembro() {
   return `M${k}`;
 }
 
-// las globales del escritorio (panel E/I/A) mandan sobre las de cada tramo
+// las globales del escritorio (panel E/I/A) mandan sobre las de cada tramo; un
+// miembro nuevo copia las del último que se creó
 function propiedadesActuales() {
   const g = modelo.propiedades_globales || {};
-  const m0 = modelo.miembros[0] || PROPIEDADES;
+  const m0 = modelo.miembros.at(-1) || PROPIEDADES;
   return { E: g.E ?? m0.E, I: g.I ?? m0.I, A: g.A ?? m0.A };
+}
+
+// ======================================================================= E, I y A con su unidad
+// En el modelo van en kN/m², m⁴ y m² (como el escritorio); en pantalla, cada una en
+// la unidad que se elija, con los factores de interfaz/unidades_app.py. La unidad
+// elegida se recuerda en el dispositivo
+const UNIDADES_PROP = {
+  E: { nombre: "Módulo de elasticidad (E)", defecto: "GPa",
+       u: { "GPa": 1e6, "MPa": 1e3, "kN/m²": 1, "Ton/m²": 9.80665, "kgf/cm²": 98.0665, "ksi": 6894.757293, "psi": 6.894757293 } },
+  I: { nombre: "Inercia (I)", defecto: "cm⁴", u: { "cm⁴": 1e-8, "m⁴": 1, "mm⁴": 1e-12, "in⁴": 4.162314256e-7 } },
+  A: { nombre: "Área (A)", defecto: "cm²", u: { "cm²": 1e-4, "m²": 1, "mm²": 1e-6, "in²": 6.4516e-4 } },
+};
+// las que pide cada estructura: la viga no trabaja a axial y la armadura no flexiona
+const propiedadesDelTipo = () => (modelo.tipo === "Viga" ? ["E", "I"] : modelo.tipo === "Armadura" ? ["E", "A"] : ["E", "I", "A"]);
+
+function unidadProp(k) {
+  try { const u = localStorage.getItem(`axiomo.unidad.${k}`); if (u && UNIDADES_PROP[k].u[u]) return u; } catch (_) { /* sin almacenamiento */ }
+  return UNIDADES_PROP[k].defecto;
+}
+// 10 cifras significativas: una inercia son 35 000 cm⁴ pero 0,00035 m⁴
+const numProp = (v) => String(Number(Number(v).toPrecision(10)));
+
+// los campos de E, I y A, cada uno con su selector de unidad. `fijadas`: las que
+// están puestas para toda la estructura (se ven y no se editan); `marcas`: en la
+// hoja de toda la estructura, cada una con su interruptor
+function camposPropiedades(valores, { fijadas = {}, marcas = false } = {}) {
+  return propiedadesDelTipo().map((k) => {
+    const P = UNIDADES_PROP[k], u = unidadProp(k);
+    const bloqueada = !marcas && fijadas[k] != null;
+    const v = fijadas[k] != null ? fijadas[k] : valores[k];
+    const opciones = Object.keys(P.u).map((x) => `<option${x === u ? " selected" : ""}>${x}</option>`).join("");
+    const texto = numProp(v / P.u[u]);
+    // data-modelo / data-texto: si el número no se toca (solo la unidad), se guarda el valor exacto
+    return `<div class="campo"><span>${P.nombre}</span><div class="con-unidad">` +
+      `<input id="h-p${k}" inputmode="decimal" autocomplete="off" value="${texto}" data-modelo="${v}" data-texto="${texto}"${bloqueada ? " disabled" : ""}>` +
+      `<select id="h-u${k}" data-antes="${u}" aria-label="Unidad de ${k}"${bloqueada ? " disabled" : ""}>${opciones}</select></div>` +
+      (marcas ? `<label class="interruptor chico">Para toda la estructura<input type="checkbox" id="h-g${k}"${fijadas[k] != null ? " checked" : ""}></label>` : "") +
+      `</div>`;
+  }).join("");
+}
+
+// al cambiar la unidad, el número se convierte: el valor sigue siendo el mismo
+function conectarUnidades() {
+  for (const k of propiedadesDelTipo()) {
+    const sel = $(`h-u${k}`);
+    if (!sel) continue;
+    sel.addEventListener("change", () => {
+      const f = UNIDADES_PROP[k].u, el = $(`h-p${k}`);
+      const v = el.value === el.dataset.texto ? Number(el.dataset.modelo) : parseFloat(String(el.value).trim().replace(",", ".")) * f[sel.dataset.antes];
+      if (isFinite(v)) {
+        el.value = el.dataset.texto = numProp(v / f[sel.value]);
+        el.dataset.modelo = v;
+      }
+      sel.dataset.antes = sel.value;
+      try { localStorage.setItem(`axiomo.unidad.${k}`, sel.value); } catch (_) { /* sin almacenamiento */ }
+    });
+  }
+}
+
+// lo escrito, en las unidades del modelo: {E, I, A} solo de las que están en la hoja
+function leerPropiedades() {
+  const r = {};
+  for (const k of propiedadesDelTipo()) {
+    const el = $(`h-p${k}`);
+    if (!el || el.disabled) continue;
+    if (el.value === el.dataset.texto && Number(el.dataset.modelo) > 0) { r[k] = Number(el.dataset.modelo); continue; }
+    const v = leerNumero(`h-p${k}`, { nombre: UNIDADES_PROP[k].nombre });
+    if (!(v > 0)) throw new Error(`«${UNIDADES_PROP[k].nombre}» debe ser mayor que cero.`);
+    r[k] = v * UNIDADES_PROP[k].u[$(`h-u${k}`).value];
+  }
+  return r;
+}
+
+// lo que dice un miembro de sus propiedades, para la nota de su hoja
+function notaPropiedades() {
+  const g = modelo.propiedades_globales || {};
+  const fijas = propiedadesDelTipo().filter((k) => g[k] != null);
+  return fijas.length ? `<p class="nota">${fijas.join(", ")} ${fijas.length > 1 ? "están fijados" : "está fijado"} para toda la estructura ` +
+    `(menú › Material y sección). Quita la marca allí para darle a este miembro el suyo.</p>` : "";
 }
 
 function agregarTramo(L) {
@@ -953,8 +1033,8 @@ function hojaTramo(et) {
     { texto: "Cerrar", clase: "secundario", accion: () => true },
     { texto: "Guardar", accion: () => {
       const L = leerNumero("h-largo", { minimo: 0.1, nombre: "Longitud" });
-      if (Math.abs(L - g.L) < 1e-9) return true;
-      const n = cambiarLargo(et, L);
+      Object.assign(m, leerPropiedades());
+      const n = Math.abs(L - g.L) < 1e-9 ? 0 : cambiarLargo(et, L);
       cambio({ encuadrar: true });
       if (n) aviso(`${n} carga${n > 1 ? "s se ajustaron" : " se ajustó"} al nuevo largo.`);
     } },
@@ -962,8 +1042,10 @@ function hojaTramo(et) {
   if (esUltimo) botones.unshift({ texto: "Eliminar", clase: "peligro", accion: () => { eliminarTramo(et); cambio({ encuadrar: true }); } });
   const nota = modelo.miembros.length > 1 && !esUltimo ? `<p class="nota">Solo se puede eliminar el último tramo de la derecha.</p>` : "";
   abrirHoja(`Tramo ${et}`, `${campo("h-largo", "Longitud (m)", numCampo(g.L))}
+    ${camposPropiedades(m, { fijadas: modelo.propiedades_globales || {} })}${notaPropiedades()}
     <div class="chips"><button type="button" class="chip" id="h-carga-aqui">+ Carga en ${et}</button>
     <button type="button" class="chip" id="h-momento-aqui">+ Momento en ${et}</button></div>${nota}`, botones, () => {
+    conectarUnidades();
     $("h-carga-aqui").addEventListener("click", () => hojaCarga({ tramo: et }));
     $("h-momento-aqui").addEventListener("click", () => hojaMomento({ tramo: et }));
   });
@@ -1195,24 +1277,30 @@ function hojaMomento({ id = null, tramo = null } = {}) {
   abrirHoja(c ? "Editar momento" : "Agregar momento", html, botones);
 }
 
+// como el panel Propiedades del escritorio: cada una con su marca «para toda la
+// estructura». Lo marcado se escribe en todos los miembros, los de ahora y los
+// nuevos, y en la hoja de cada miembro se ve bloqueado; lo que no, lo lleva cada uno
 function hojaMaterial() {
-  const p = propiedadesActuales();
-  const conA = modelo.tipo !== "Viga", conI = modelo.tipo !== "Armadura";
+  const g = modelo.propiedades_globales || {};
+  const quien = modelo.tipo === "Viga" ? "tramo" : "barra";
   abrirHoja("Material y sección", `
-    ${campo("h-E", "Módulo de elasticidad E (GPa)", numCampo(p.E / 1e6))}
-    ${conI ? campo("h-I", "Inercia I (cm⁴)", numCampo(p.I * 1e8)) : ""}
-    ${conA ? campo("h-A", "Área A (cm²)", numCampo(p.A * 1e4)) : ""}
-    <p class="nota">Se aplican a todas las barras. Cambian los desplazamientos y las estructuras hiperestáticas; en una isostática las reacciones no dependen de ellos.</p>`, [
+    <p class="nota">Marca una propiedad para fijarla en toda la estructura. Sin marcar, cada ${quien} lleva la suya: ${quien === "tramo" ? "tócalo" : "tócala"} en el dibujo para cambiarla.</p>
+    ${camposPropiedades(propiedadesActuales(), { fijadas: g, marcas: true })}
+    <p class="nota">Cambian los desplazamientos y las estructuras hiperestáticas; en una isostática las reacciones no dependen de ellas.</p>`, [
     { texto: "Cancelar", clase: "secundario", accion: () => true },
     { texto: "Aplicar", accion: () => {
-      const E = leerNumero("h-E", { minimo: 1e-6, nombre: "E" }) * 1e6;
-      const I = $("h-I") ? leerNumero("h-I", { minimo: 1e-9, nombre: "I" }) * 1e-8 : p.I;
-      const A = $("h-A") ? leerNumero("h-A", { minimo: 1e-9, nombre: "A" }) * 1e-4 : p.A;
-      for (const m of modelo.miembros) { m.E = E; m.I = I; m.A = A; }
-      modelo.propiedades_globales = { ...modelo.propiedades_globales, E, I, A };
+      const valores = leerPropiedades();
+      const nuevas = { ...g };
+      for (const k of propiedadesDelTipo()) {
+        if ($(`h-g${k}`).checked) {
+          nuevas[k] = valores[k];
+          for (const m of modelo.miembros) m[k] = valores[k];
+        } else nuevas[k] = null;      // cada miembro conserva el valor que tenía
+      }
+      modelo.propiedades_globales = nuevas;
       cambio();
     } },
-  ]);
+  ], conectarUnidades);
 }
 
 // ======================================================================= calcular y resultados

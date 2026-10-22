@@ -6,12 +6,12 @@
 // calcula sin internet. Solo funciona en HTTPS (o en localhost).
 "use strict";
 
-const VERSION = "2f64bb451a66";               // construir.py pone aquí la huella de los archivos
+const VERSION = "069561b44721";               // construir.py pone aquí la huella de los archivos
 const CACHE_APP = `axiomo-app-${VERSION}`;
 const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/";
 const CACHE_PY = "axiomo-python-v314.0.7";
 // cuentas.json no se guarda: solo se usa al activar, y siempre se pide fresco
-const APP = ["./", "index.html", "app.js", "marco.js", "estilo.css", "logo.png", "motor_worker.js", "axiomo_core.bin",
+const APP = ["./", "index.html", "app.js", "marco.js", "seccion.js", "estilo.css", "logo.png", "motor_worker.js", "axiomo_core.bin",
              "manifest.webmanifest", "icono-180.png", "icono-192.png", "icono-512.png", "icono-mascara.png"];
 const NUCLEO_PY = ["pyodide.mjs", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_stdlib.zip", "pyodide-lock.json"];
 const PAQUETES = ["numpy", "sympy", "matplotlib"];

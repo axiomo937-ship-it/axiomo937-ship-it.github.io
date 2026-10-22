@@ -101,6 +101,16 @@ main { max-width: 1100px; margin: 0 auto; padding: 10px 10px 0; }
 .resorte { stroke: #1e3a8a; stroke-width: 2; fill: none; stroke-linejoin: round; }
 /* pórticos y armaduras */
 .barra-arm { stroke: #1f2937; stroke-width: 3.4; stroke-linecap: round; }
+/* sección transversal */
+.fig-llena { fill: #dbeafe; stroke: #1e3a8a; stroke-width: 1.6; stroke-linejoin: round; }
+.fig-hueco { fill: #fff; stroke: #1e3a8a; stroke-width: 1.4; stroke-dasharray: 5 3; stroke-linejoin: round; }
+.fig-toque { fill: transparent; stroke: transparent; stroke-width: 18; cursor: pointer; }
+.fig-numero circle { fill: #1e3a8a; }
+.fig-numero text { fill: #fff; font-size: 11px; font-weight: 800; pointer-events: none; }
+.fig-numero { pointer-events: none; }
+.eje-neutro { stroke: #dc2626; stroke-width: 1.6; stroke-dasharray: 8 4; }
+.centroide { fill: #dc2626; stroke: #fff; stroke-width: 1.5; }
+.etq-en { font-size: 12px; font-weight: 700; fill: #dc2626; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
 .nodo-arm { fill: #fff; stroke: #1f2937; stroke-width: 2.2; }
 .seleccion-nodo { fill: rgba(245, 158, 11, .25); stroke: #f59e0b; stroke-width: 2.5; }
 .etq-temp { font-size: 12px; font-weight: 700; fill: #c2410c; }

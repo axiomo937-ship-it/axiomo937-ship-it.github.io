@@ -4,7 +4,7 @@
 // hace el motor de Axiomo (Python) en un Web Worker (motor_worker.js).
 "use strict";
 
-const VERSION = "web 0.5";
+const VERSION = "web 0.6";
 const $ = (id) => document.getElementById(id);
 const LISTAS_CARGA = ["cargas_puntuales", "cargas_distribuidas", "cargas_polinomicas", "momentos", "cargas_nodales"];
 const NS = "http://www.w3.org/2000/svg";
@@ -480,8 +480,10 @@ function escribirLocal(k, v) {
 }
 
 // cada tipo de estructura guarda su propio modelo en el dispositivo
-const TIPOS = ["Viga", "Pórtico", "Armadura"];
-const CLAVE_TIPO = { "Viga": "axiomo.viga", "Pórtico": "axiomo.portico", "Armadura": "axiomo.armadura" };
+const TIPOS = ["Viga", "Pórtico", "Armadura", "Sección"];
+const CLAVE_TIPO = { "Viga": "axiomo.viga", "Pórtico": "axiomo.portico", "Armadura": "axiomo.armadura", "Sección": "axiomo.seccion" };
+// lo que no es viga lo dibuja y lo edita su módulo: marco.js o seccion.js
+const otro = () => (modelo.tipo === "Sección" ? SeccionWeb : Marco);
 
 function guardarLocal() {
   escribirLocal(CLAVE_TIPO[modelo.tipo] || "axiomo.viga", JSON.stringify(modelo));
@@ -491,13 +493,19 @@ function guardarLocal() {
 function cargarLocal(tipo = "Viga") {
   try {
     const t = leerLocal(CLAVE_TIPO[tipo]);
+    if (tipo === "Sección") {
+      const s = t ? JSON.parse(t) : null;
+      return s && s.tipo === "Sección" && Array.isArray(s.figuras) ? s : null;
+    }
     const m = t ? normalizar(JSON.parse(t)) : null;
     if (!m || m.tipo !== tipo || !m.nodos.length) return null;
     return tipo !== "Viga" || (m.nodos.length >= 2 && m.miembros.length) ? m : null;
   } catch (_) { return null; }
 }
 
-function modeloInicial(tipo) { return tipo === "Viga" ? vigaInicial(true) : Marco.inicial(tipo); }
+function modeloInicial(tipo) {
+  return tipo === "Viga" ? vigaInicial(true) : tipo === "Sección" ? SeccionWeb.inicial() : Marco.inicial(tipo);
+}
 
 function cambio({ encuadrar = false } = {}) {
   resultado = null;
@@ -505,7 +513,7 @@ function cambio({ encuadrar = false } = {}) {
   if (encuadrar) vista.auto = true;
   guardarLocal();
   dibujar();
-  if (modelo.cargas_polinomicas.some((c) => !leyes.has(c.id))) prepararLeyes();
+  if ((modelo.cargas_polinomicas || []).some((c) => !leyes.has(c.id))) prepararLeyes();
 }
 
 // leyes: un polinomio se evalúa aquí; una expresión (seno, coseno) la evalúa el motor
@@ -519,7 +527,7 @@ function muestrasPolinomio(coefs, largo, n = 60) {
 }
 
 async function prepararLeyes() {
-  for (const c of modelo.cargas_polinomicas) {
+  for (const c of modelo.cargas_polinomicas || []) {
     if (leyes.has(c.id)) continue;
     const largo = c.x2 - c.x1;
     if (!c.expresion && c.coeficientes && c.coeficientes.length) {
@@ -696,7 +704,7 @@ function interpolar(puntos, t) {
 
 function dibujar() {
   if (!modelo) return;
-  if (modelo.tipo !== "Viga") return Marco.dibujar();
+  if (modelo.tipo !== "Viga") return otro().dibujar();
   $("ayuda").textContent = "Toca un tramo, un nodo o una carga para editarlo. Pellizca para acercar.";
   lay = calcularLayout();
   const { W, H, X, y0 } = lay;
@@ -953,7 +961,7 @@ svg.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 function tocar(el) {
-  if (modelo.tipo !== "Viga") return Marco.tocar(el);
+  if (modelo.tipo !== "Viga") return otro().tocar(el);
   if (!el) return;
   const tipo = el.dataset.tipo, id = el.dataset.id;
   if (tipo === "miembro") hojaTramo(id);
@@ -1327,7 +1335,10 @@ async function calcular() {
 }
 
 function mostrarResultados() {
-  if (modelo.tipo !== "Viga") return Marco.mostrarResultados();
+  $("nota-diagramas").textContent = modelo.tipo === "Sección"
+    ? "τ y σ a lo alto de la sección; la línea roja es el eje neutro."
+    : "Toca o desliza sobre los diagramas para leer los valores.";
+  if (modelo.tipo !== "Viga") return otro().mostrarResultados();
   const r = resultado;
   $("res-metodo").textContent = r.metodo;
   $("res-notas").textContent = [...(r.notas || []), ...(r.avisos || [])].join(" ");
@@ -1362,7 +1373,7 @@ const PANELES = [
 ];
 
 function dibujarDiagramas() {
-  if (modelo.tipo !== "Viga") return Marco.dibujarDiagramas();
+  if (modelo.tipo !== "Viga") return otro().dibujarDiagramas();
   const caja = $("diagramas");
   const W = Math.max(280, caja.clientWidth || 340);
   const H = 150;
@@ -1415,7 +1426,7 @@ function valorEn(seg, x) {
 
 // el mismo x en los tres diagramas, con su valor
 function moverCursor(e) {
-  if (modelo.tipo !== "Viga") { if (e.type === "pointerdown") Marco.leer(e); return; }
+  if (modelo.tipo !== "Viga") { if (e.type === "pointerdown") otro().leer(e); return; }
   const caja = $("diagramas");
   if (!caja._paneles || !caja._paneles.length) return;
   for (const pan of caja._paneles) {
@@ -1462,7 +1473,7 @@ function noAplica(met, grado, larga = false) {
 }
 
 function hojaPasoAPaso() {
-  if (modelo.tipo !== "Viga") return Marco.hojaPasoAPaso();
+  if (modelo.tipo !== "Viga") return otro().hojaPasoAPaso();
   const grado = gradoHiperestatico();
   const estado = grado < 0 ? "La viga es inestable: le faltan apoyos." : grado === 0 ? "Viga isostática." : `Viga hiperestática de grado ${grado}.`;
   const algunoNo = METODOS.some((x) => noAplica(x, grado));
@@ -1597,12 +1608,16 @@ $("btn-imprimir").addEventListener("click", () => { ajustarImpresion(); window.p
 
 // ======================================================================= archivos
 function guardarArchivo() {
-  const datos = { programa: "Axiomo", version: 1, modelo };
+  // la sección va en el formato .seccion.json del programa de escritorio
+  const esSeccion = modelo.tipo === "Sección";
+  const datos = esSeccion
+    ? { programa: "Axiomo - Seccion", version: 1, unidad: modelo.unidad || "cm", nombre: modelo.nombre || "", figuras: modelo.figuras }
+    : { programa: "Axiomo", version: 1, modelo };
   const blob = new Blob([JSON.stringify(datos, null, 1)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  const nombre = { "Viga": "viga", "Pórtico": "portico", "Armadura": "armadura" }[modelo.tipo] || "modelo";
-  a.download = `${nombre}-${new Date().toISOString().slice(0, 10)}.pystruct`;
+  const nombre = { "Viga": "viga", "Pórtico": "portico", "Armadura": "armadura", "Sección": "seccion" }[modelo.tipo] || "modelo";
+  a.download = `${nombre}-${new Date().toISOString().slice(0, 10)}${esSeccion ? ".seccion.json" : ".pystruct"}`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
@@ -1615,11 +1630,18 @@ $("archivo").addEventListener("change", async (e) => {
   try {
     let d;
     try { d = JSON.parse(await f.text()); } catch (_) { throw new Error("Ese archivo no es un modelo de Axiomo (.pystruct)."); }
-    const m = d.modelo || d;
-    if (!TIPOS.includes(m.tipo)) throw new Error("Ese archivo no es un modelo de Axiomo.");
-    if (!Array.isArray(m.nodos) || m.nodos.length < (m.tipo === "Viga" ? 2 : 1)) throw new Error("El archivo no tiene una estructura completa.");
-    if (modelo.tipo !== "Viga" && Marco.modoBarra) Marco.salirModoBarra();
-    modelo = normalizar(m);
+    if (modelo.tipo !== "Viga" && otro().modoBarra) otro().salirModoBarra();
+    if (Array.isArray(d.figuras)) {
+      // una sección del escritorio (.seccion.json); V y M se conservan de la que había
+      const vm = modelo.tipo === "Sección" ? modelo.vm : (cargarLocal("Sección") || {}).vm;
+      guardarLocal();
+      modelo = { tipo: "Sección", unidad: d.unidad || "cm", nombre: d.nombre || "", figuras: d.figuras, vm: vm || { modo: "nada" } };
+    } else {
+      const m = d.modelo || d;
+      if (!TIPOS.includes(m.tipo) || m.tipo === "Sección") throw new Error("Ese archivo no es un modelo de Axiomo.");
+      if (!Array.isArray(m.nodos) || m.nodos.length < (m.tipo === "Viga" ? 2 : 1)) throw new Error("El archivo no tiene una estructura completa.");
+      modelo = normalizar(m);
+    }
     leyes.clear();
     pintarHerramientas();
     cambio({ encuadrar: true });
@@ -1636,7 +1658,7 @@ for (const b of document.querySelectorAll("[data-menu]")) {
   b.addEventListener("click", () => {
     $("menu").hidden = true;
     const accion = b.dataset.menu;
-    if (accion === "nuevo" && modelo.tipo !== "Viga") Marco.hojaNuevo();
+    if (accion === "nuevo" && modelo.tipo !== "Viga") otro().hojaNuevo();
     else if (accion === "nuevo") {
       abrirHoja("Nueva viga", `<p>Se borra la viga actual y se empieza con un tramo de 6 m apoyado en sus extremos.</p>`, [
         { texto: "Cancelar", clase: "secundario", accion: () => true },
@@ -1644,6 +1666,7 @@ for (const b of document.querySelectorAll("[data-menu]")) {
       ]);
     } else if (accion === "abrir") $("archivo").click();
     else if (accion === "guardar") guardarArchivo();
+    else if (accion === "material" && modelo.tipo === "Sección") aviso("En la sección, las medidas de cada figura se editan tocándola; V y M, en «V y M».");
     else if (accion === "material") hojaMaterial();
     else if (accion === "paso") hojaPasoAPaso();
     else if (accion === "acerca") {
@@ -1665,7 +1688,7 @@ const HERRAMIENTAS_VIGA = [
 const ICONO_CALCULAR = `<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h2M12 11h2M8 15h2M12 15h2M16 11v6"/>`;
 
 function pintarHerramientas() {
-  const lista = modelo.tipo === "Viga" ? HERRAMIENTAS_VIGA : Marco.herramientas();
+  const lista = modelo.tipo === "Viga" ? HERRAMIENTAS_VIGA : otro().herramientas();
   $("herramientas").innerHTML = lista.map(([a, t, ico]) => `<button data-accion="${a}"><svg viewBox="0 0 24 24">${ico}</svg><span>${t}</span></button>`).join("") +
     `<button data-accion="calcular" class="principal" id="btn-calcular"><svg viewBox="0 0 24 24">${ICONO_CALCULAR}</svg><span>Calcular</span></button>`;
   $("tipo-texto").textContent = modelo.tipo;
@@ -1676,7 +1699,7 @@ $("herramientas").addEventListener("click", (e) => {
   if (!b) return;
   const a = b.dataset.accion;
   if (a === "calcular") calcular();
-  else if (modelo.tipo !== "Viga") Marco.accion(a);
+  else if (modelo.tipo !== "Viga") otro().accion(a);
   else if (a === "tramo") hojaNuevoTramo();
   else if (a === "apoyo") hojaApoyo();
   else if (a === "carga") hojaCarga();
@@ -1685,7 +1708,7 @@ $("herramientas").addEventListener("click", (e) => {
 
 function cambiarTipo(tipo) {
   if (tipo === modelo.tipo) return;
-  if (modelo.tipo !== "Viga" && Marco.modoBarra) Marco.salirModoBarra();
+  if (modelo.tipo !== "Viga" && otro().modoBarra) otro().salirModoBarra();
   guardarLocal();
   modelo = cargarLocal(tipo) || modeloInicial(tipo);
   leyes.clear();
@@ -1696,7 +1719,8 @@ function cambiarTipo(tipo) {
 $("btn-tipo").addEventListener("click", () => {
   const tipos = [["Viga", "Vigas continuas, con voladizos, rótulas y cargas con función."],
                  ["Pórtico", "Marcos con barras inclinadas, rótulas y cargas globales entre nodos."],
-                 ["Armadura", "Barras articuladas con cargas en los nudos."]];
+                 ["Armadura", "Barras articuladas con cargas en los nudos."],
+                 ["Sección", "Sección transversal: centroide, inercia, Q y los esfuerzos τ y σ."]];
   abrirHoja("Tipo de estructura", `<div class="lista-metodos">${tipos.map(([t, d]) =>
     `<button class="metodo${t === modelo.tipo ? " elegido" : ""}" data-tipo-estructura="${t}"><b>${t}</b><small>${d}</small></button>`).join("")}</div>` +
     `<p class="nota">Cada tipo guarda su propio modelo en este dispositivo: al volver, sigue como lo dejaste.</p>`,

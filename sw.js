@@ -6,7 +6,7 @@
 // calcula sin internet. Solo funciona en HTTPS (o en localhost).
 "use strict";
 
-const VERSION = "069561b44721";               // construir.py pone aquí la huella de los archivos
+const VERSION = "c3546b02c3da";               // construir.py pone aquí la huella de los archivos
 const CACHE_APP = `axiomo-app-${VERSION}`;
 const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/";
 const CACHE_PY = "axiomo-python-v314.0.7";

@@ -4,7 +4,7 @@
 // hace el motor de Axiomo (Python) en un Web Worker (motor_worker.js).
 "use strict";
 
-const VERSION = "web 0.6";
+const VERSION = "web 0.7";
 const $ = (id) => document.getElementById(id);
 const LISTAS_CARGA = ["cargas_puntuales", "cargas_distribuidas", "cargas_polinomicas", "momentos", "cargas_nodales"];
 const NS = "http://www.w3.org/2000/svg";
